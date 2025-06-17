@@ -130,19 +130,3 @@ if __name__ == "__main__":
         sections = extract_sections(raw_docx)
         merge_into_template(sections, TEMPLATE_PATH, final_docx)
         print(f"Converted {fname} → {os.path.basename(final_docx)}")
-```python
-import os
-from pdf2docx import Converter
-from docx import Document
-from docx.oxml.table import CT_Tbl
-from docx.oxml.text.paragraph import CT_P
-from docx.table import Table
-from docx.text.paragraph import Paragraph
-from docx.shared import Inches
-from PIL import Image
-
-# Container-Verzeichnisse
-INPUT_DIR = "/app/sample_pdfs"
-TEMPLATE_PATH = "/app/templates/master_template.docx"
-OUTPUT_DIR = "/app/output"
-ICONS_DIR = "/app/icons"
