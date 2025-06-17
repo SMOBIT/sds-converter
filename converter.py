@@ -22,8 +22,8 @@ def pdf_to_raw_docx(pdf_path, raw_docx_path):
         raw_docx_path,
         start=0,
         end=None,
-        image_folder=img_folder,  # hier Bilder ablegen
-        extract_images=True       # und einbetten
+        image_folder=img_folder,
+        extract_images=True
     )
     cv.close()
 
@@ -46,7 +46,6 @@ def extract_sections(raw_docx_path):
     sections = {}
     current = None
     for block in iter_block_items(doc):
-        # Nur Paragraphs haben text-Attribut
         text = block.text.strip() if isinstance(block, Paragraph) else ''
         if text.upper().startswith("ABSCHNITT"):
             sec_num = text.split()[1].rstrip(":")
@@ -75,6 +74,23 @@ def merge_into_template(sections, template_path, out_path):
 
 
 if __name__ == "__main__":
+    # Ausgabeordner anlegen
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # Alle PDF-Dateien im Input-Ordner verarbeiten
+    for fname in os.listdir(INPUT_DIR):
+        if not fname.lower().endswith('.pdf'):
+            continue
+        pdf_path = os.path.join(INPUT_DIR, fname)
+        raw_docx = os.path.join(OUTPUT_DIR, fname.replace('.pdf', '_raw.docx'))
+        final_docx = os.path.join(OUTPUT_DIR, fname.replace('.pdf', '.docx'))
+
+        print(f"Processing {fname}...")
+        pdf_to_raw_docx(pdf_path, raw_docx)
+        secs = extract_sections(raw_docx)
+        merge_into_template(secs, TEMPLATE_PATH, final_docx)
+        print(f"Converted {fname} → {os.path.basename(final_docx)}")
+``` "__main__":
     # Ausgabeordner anlegen
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
