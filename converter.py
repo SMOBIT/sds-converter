@@ -2,7 +2,7 @@ import os
 from pdf2docx import Converter
 from docx import Document
 
-# Konstanten für Verzeichnisse im Container
+# Container-Verzeichnisse
 INPUT_DIR = "/app/sample_pdfs"
 TEMPLATE_PATH = "/app/templates/master_template.docx"
 OUTPUT_DIR = "/app/output"
@@ -48,10 +48,10 @@ def merge_into_template(sections, template_path, out_path):
 
 
 if __name__ == "__main__":
-    # Sicherstellen, dass OUTPUT_DIR existiert
+    # Ausgabeordner anlegen
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Alle PDF-Dateien im INPUT_DIR verarbeiten
+    # Alle PDF-Dateien im Input-Ordner verarbeiten
     for fname in os.listdir(INPUT_DIR):
         if not fname.lower().endswith('.pdf'):
             continue
