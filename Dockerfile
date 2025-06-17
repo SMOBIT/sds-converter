@@ -10,5 +10,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY converter.py .
 COPY templates/ templates/
+COPY sample_pdfs/ sample_pdfs/
 
 ENTRYPOINT ["python", "converter.py"]

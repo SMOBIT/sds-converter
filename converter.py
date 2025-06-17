@@ -2,10 +2,12 @@ import sys
 from pdf2docx import Converter
 from docx import Document
 
+
 def pdf_to_raw_docx(pdf_path, raw_docx_path):
     cv = Converter(pdf_path)
     cv.convert(raw_docx_path, start=0, end=None)
     cv.close()
+
 
 def extract_sections(raw_docx_path):
     doc = Document(raw_docx_path)
@@ -20,6 +22,7 @@ def extract_sections(raw_docx_path):
         if current:
             sections[current].append(p)
     return sections
+
 
 def merge_into_template(sections, template_path, out_path):
     tpl = Document(template_path)
@@ -37,6 +40,7 @@ def merge_into_template(sections, template_path, out_path):
                     idx += 1
                 break
     tpl.save(out_path)
+
 
 if __name__ == "__main__":
     pdf, template_dir, out_dir = sys.argv[1], sys.argv[2], sys.argv[3]
