@@ -1,6 +1,11 @@
-import sys
+import os
 from pdf2docx import Converter
 from docx import Document
+
+# Konstanten für Verzeichnisse im Container
+INPUT_DIR = "/app/sample_pdfs"
+TEMPLATE_PATH = "/app/templates/master_template.docx"
+OUTPUT_DIR = "/app/output"
 
 
 def pdf_to_raw_docx(pdf_path, raw_docx_path):
@@ -43,12 +48,19 @@ def merge_into_template(sections, template_path, out_path):
 
 
 if __name__ == "__main__":
-    pdf, template_dir, out_dir = sys.argv[1], sys.argv[2], sys.argv[3]
-    raw = f"{out_dir}/{pdf.split('/')[-1].replace('.pdf', '_raw.docx')}"
-    final = f"{out_dir}/{pdf.split('/')[-1].replace('.pdf', '.docx')}"
-    template = f"{template_dir}/master_template.docx"
+    # Sicherstellen, dass OUTPUT_DIR existiert
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    pdf_to_raw_docx(pdf, raw)
-    secs = extract_sections(raw)
-    merge_into_template(secs, template, final)
-    print(f"Converted {pdf} → {final}")
+    # Alle PDF-Dateien im INPUT_DIR verarbeiten
+    for fname in os.listdir(INPUT_DIR):
+        if not fname.lower().endswith('.pdf'):
+            continue
+        pdf_path = os.path.join(INPUT_DIR, fname)
+        raw_docx = os.path.join(OUTPUT_DIR, fname.replace('.pdf', '_raw.docx'))
+        final_docx = os.path.join(OUTPUT_DIR, fname.replace('.pdf', '.docx'))
+
+        print(f"Processing {fname}...")
+        pdf_to_raw_docx(pdf_path, raw_docx)
+        secs = extract_sections(raw_docx)
+        merge_into_template(secs, TEMPLATE_PATH, final_docx)
+        print(f"Converted {fname} → {os.path.basename(final_docx)}")
