@@ -14,22 +14,20 @@ TEMPLATE_PATH = "/app/templates/master_template.docx"
 OUTPUT_DIR = "/app/output"
 ICONS_DIR = "/app/icons"
 
-
 def get_image_size_inches(path):
     """
-    Berechnet die Bildgröße in Inches basierend auf Pixelgröße und DPI.
+    Berechnet Bildgröße in Inches basierend auf Pixelgröße und DPI.
     """
     img = Image.open(path)
-    dpi = img.info.get('dpi', (96, 96))
+    dpi = img.info.get("dpi", (96, 96))
     width_px, height_px = img.size
     return width_px / dpi[0], height_px / dpi[1]
 
-
 def pdf_to_raw_docx(pdf_path, raw_docx_path):
     """
-    Konvertiert eine PDF-Datei zu einem Roh-DOCX und extrahiert alle Bilder.
+    Konvertiert PDF zu Roh-DOCX und extrahiert eingebettete Bilder.
     """
-    img_folder = raw_docx_path.replace('.docx', '_images')
+    img_folder = raw_docx_path.replace(".docx", "_images")
     os.makedirs(img_folder, exist_ok=True)
 
     cv = Converter(pdf_path)
@@ -41,7 +39,7 @@ def pdf_to_raw_docx(pdf_path, raw_docx_path):
         extract_images=True
     )
     cv.close()
-
+    # Hinweis: die extrahierten Bilder liegen jetzt in img_folder
 
 def iter_block_items(doc):
     """
@@ -55,16 +53,15 @@ def iter_block_items(doc):
         else:
             yield child
 
-
 def extract_sections(raw_docx_path):
     """
-    Liest Abschnitte basierend auf Überschrift 'ABSCHNITT <Nummer>'.
+    Liest Abschnitte anhand von Überschriften 'ABSCHNITT <Nummer>'.
     """
     doc = Document(raw_docx_path)
     sections = {}
     current = None
     for block in iter_block_items(doc):
-        text = block.text.strip() if isinstance(block, Paragraph) else ''
+        text = block.text.strip() if isinstance(block, Paragraph) else ""
         if text.upper().startswith("ABSCHNITT"):
             sec_num = text.split()[1].rstrip(":")
             current = sec_num
@@ -72,7 +69,6 @@ def extract_sections(raw_docx_path):
         if current:
             sections[current].append(block)
     return sections
-
 
 def merge_into_template(sections, template_path, out_path):
     """
@@ -85,47 +81,43 @@ def merge_into_template(sections, template_path, out_path):
     body = tpl.element.body
 
     for sec_num, blocks in sections.items():
-        placeholder = f"{{{{SECTION_{sec_num}}}}}"
+        placeholder = f"{{SECTION_{sec_num}}}"
         for para in tpl.paragraphs:
             if placeholder in para.text:
                 idx = body.index(para._element)
                 body.remove(para._element)
-                # Roh-Inhalte einfügen
+                # Roh-Inhalte einsetzen
                 for block in blocks:
-                    element = getattr(block, '_element', block)
+                    element = getattr(block, "_element", block)
                     body.insert(idx, element)
                     idx += 1
-                # Fallback-Icon
+                # Fallback-Icon einsetzen, wenn kein Bild da war
                 icon_path = os.path.join(ICONS_DIR, f"GHS{sec_num}.png")
-                if os.path.isfile(icon_path) and not any(
-                    hasattr(b, 'inline_shapes') and b.inline_shapes for b in blocks
-                ):
-                    width_in, _ = get_image_size_inches(icon_path)
+                if os.path.isfile(icon_path):
+                    w_in, _ = get_image_size_inches(icon_path)
                     pic_par = tpl.add_paragraph()
                     run = pic_par.add_run()
-                    run.add_picture(icon_path, width=Inches(width_in))
+                    run.add_picture(icon_path, width=Inches(w_in))
                     body.insert(idx, pic_par._p)
-                    idx += 1
                 break
     tpl.save(out_path)
-
 
 if __name__ == "__main__":
     # Ordner für Outputs und Icons sicherstellen
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(ICONS_DIR, exist_ok=True)
 
-    # Alle PDF-Dateien verarbeiten
+    # Verarbeite alle PDFs
     for fname in os.listdir(INPUT_DIR):
-        if not fname.lower().endswith('.pdf'):
+        if not fname.lower().endswith(".pdf"):
             continue
         pdf_path = os.path.join(INPUT_DIR, fname)
-        raw_docx = os.path.join(OUTPUT_DIR, fname.replace('.pdf', '_raw.docx'))
-        final_docx = os.path.join(OUTPUT_DIR, fname.replace('.pdf', '.docx'))
+        raw_docx = os.path.join(OUTPUT_DIR, fname.replace(".pdf", "_raw.docx"))
+        final_docx = os.path.join(OUTPUT_DIR, fname.replace(".pdf", ".docx"))
 
         print(f"Processing {fname}...")
         pdf_to_raw_docx(pdf_path, raw_docx)
-        img_folder = raw_docx.replace('.docx', '_images')
+        img_folder = raw_docx.replace(".docx", "_images")
         print(f"Images folder: {img_folder} -> {'found' if os.path.isdir(img_folder) else 'missing'}")
         sections = extract_sections(raw_docx)
         merge_into_template(sections, TEMPLATE_PATH, final_docx)
