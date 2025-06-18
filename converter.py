@@ -42,28 +42,25 @@ def pdf_to_raw_docx(pdf_path, raw_docx_path):
 
 
 def iter_block_items(parent):
-    # yield paragraphs and tables
+    # yield paragraphs and tables only
     for child in parent.element.body:
         if isinstance(child, CT_P):
             yield Paragraph(child, parent)
         elif isinstance(child, CT_Tbl):
             yield Table(child, parent)
-        else:
-            yield child
 
 
 def extract_sections(raw_docx_path):
     doc = Document(raw_docx_path)
     sections = {}
     current = None
+    header_re = re.compile(r"^\s*abschnitt\s*(\d+)", re.I)
     for block in iter_block_items(doc):
         text = block.text.strip() if isinstance(block, Paragraph) else ''
-        if text.upper().startswith('ABSCHNITT'):
-            parts = text.split()
-            if len(parts) >= 2:
-                num = ''.join(ch for ch in parts[1] if ch.isdigit())
-                current = num
-                sections[num] = []
+        m = header_re.match(text)
+        if m:
+            current = m.group(1)
+            sections[current] = []
         if current:
             sections[current].append(block)
     return sections
