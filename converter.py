@@ -112,7 +112,6 @@ if __name__ == '__main__':
         base, _ = os.path.splitext(f)
         raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
         final = os.path.join(OUTPUT_DIR, f"{base}.docx")
-=======
         raw = os.path.join(OUTPUT_DIR, f.replace('.pdf', '_raw.docx'))
         final = os.path.join(OUTPUT_DIR, f.replace('.pdf', '.docx'))
         print('Processing', f)
