@@ -12,9 +12,9 @@ from PIL import Image
 
 # Standardpfade (werden im Container verwendet)
 DEFAULT_INPUT_DIR = "/app/sample_pdfs"
-DEFAULT_TEMPLATE_PATH = "/app/templates/master_template.docx"
-DEFAULT_OUTPUT_DIR = "/app/output"
-DEFAULT_ICONS_DIR = "/app/icons"
+DEFAULT_TEMPLATE_PATH = "/data/templates/master_template.docx"
+DEFAULT_OUTPUT_DIR = "/data/output"
+DEFAULT_ICONS_DIR = "/data/icons"
 
 # Pfade ggf. überschreiben, damit das Skript auch lokal lauffähig ist
 INPUT_DIR = os.environ.get("INPUT_DIR", DEFAULT_INPUT_DIR)
