@@ -56,6 +56,42 @@ def extract_sections(raw_docx_path):
     current = None
     header_re = re.compile(r"^\s*abschnitt\s*(\d+)\s*[:.-]?", re.I)
 
+    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+
+    for block in iter_block_items(doc):
+        if isinstance(block, Paragraph):
+            text = block.text.strip()
+            m = header_re.match(text)
+            if m:
+                current = m.group(1)
+                sections[current] = []
+                continue  # skip heading itself
+            if current:
+                sections[current].append(block)
+        elif isinstance(block, Table):
+            found_idx = None
+            for i, row in enumerate(block.rows):
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        m = header_re.match(para.text.strip())
+                        if m:
+                            current = m.group(1)
+                            sections[current] = []
+                            found_idx = i
+                            break
+                    if found_idx is not None:
+                        break
+                if found_idx is not None:
+                    break
+            if found_idx is not None:
+                tbl_elem = deepcopy(block._element)
+                rows = tbl_elem.findall('./w:tr', ns)
+                for r in rows[:found_idx+1]:
+                    tbl_elem.remove(r)
+                if tbl_elem.findall('./w:tr', ns):
+                    sections[current].append(tbl_elem)
+            elif current:
+                sections[current].append(block)
     for block in iter_block_items(doc):
         if isinstance(block, Paragraph):
             text = block.text.strip()
@@ -106,6 +142,28 @@ def merge_into_template(sections, template_path, out_path):
     pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
 
 
+    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+
+    # iterate over all paragraph elements, auch innerhalb von Tabellen
+    for p in tpl.element.xpath('.//w:p', namespaces=ns):
+        texts = [t.text or '' for t in p.xpath('.//w:t', namespaces=ns)]
+        text = ''.join(texts)
+        m = pattern.search(text)
+        if not m:
+            continue
+        num = m.group(1)
+        parent = p.getparent()
+        idx = parent.index(p)
+        parent.remove(p)
+
+        # entsprechenden Abschnitt einfuegen, falls vorhanden
+        for b in sections.get(num, []):
+            elem = getattr(b, '_element', b)
+            parent.insert(idx, deepcopy(elem))
+            idx += 1
+
+        # ggf. Fallback-Icon einfuegen
+
     # Regex zum Finden von Platzhaltern wie {SECTION_1} oder {{SECTION_1}}
     # (manche Templates nutzen doppelte geschweifte Klammern)
     pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
@@ -138,7 +196,12 @@ def merge_into_template(sections, template_path, out_path):
             pic_p = tpl.add_paragraph()
             run = pic_p.add_run()
             run.add_picture(icon, width=Inches(w_in))
+
+            body.remove(pic_p._p)
+            parent.insert(idx, pic_p._p)
+
             body.insert(idx, pic_p._p)
+
     tpl.save(out_path)
 
 
@@ -153,8 +216,6 @@ if __name__ == '__main__':
         base, _ = os.path.splitext(f)
         raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
         final = os.path.join(OUTPUT_DIR, f"{base}.docx")
-        raw = os.path.join(OUTPUT_DIR, f.replace('.pdf', '_raw.docx'))
-        final = os.path.join(OUTPUT_DIR, f.replace('.pdf', '.docx'))
         print('Processing', f)
         pdf_to_raw_docx(pdf, raw)
         secs = extract_sections(raw)
