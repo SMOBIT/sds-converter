@@ -56,6 +56,8 @@ def extract_sections(raw_docx_path):
     current = None
     header_re = re.compile(r"^\s*abschnitt\s*(\d+)\s*[:.-]?", re.I)
 
+    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+
     for block in iter_block_items(doc):
         if isinstance(block, Paragraph):
             text = block.text.strip()
@@ -63,39 +65,49 @@ def extract_sections(raw_docx_path):
             if m:
                 current = m.group(1)
                 sections[current] = []
+                continue  # skip heading itself
             if current:
                 sections[current].append(block)
         elif isinstance(block, Table):
-            found = False
-            for row in block.rows:
+            found_idx = None
+            for i, row in enumerate(block.rows):
                 for cell in row.cells:
                     for para in cell.paragraphs:
                         m = header_re.match(para.text.strip())
                         if m:
                             current = m.group(1)
                             sections[current] = []
-                            found = True
+                            found_idx = i
                             break
-                    if found:
+                    if found_idx is not None:
                         break
-                if found:
+                if found_idx is not None:
                     break
-            if current:
+            if found_idx is not None:
+                tbl_elem = deepcopy(block._element)
+                rows = tbl_elem.findall('./w:tr', ns)
+                for r in rows[:found_idx+1]:
+                    tbl_elem.remove(r)
+                if tbl_elem.findall('./w:tr', ns):
+                    sections[current].append(tbl_elem)
+            elif current:
                 sections[current].append(block)
-    header_re = re.compile(r"^\s*abschnitt\s*(\d+)", re.I)
-    for block in iter_block_items(doc):
-        text = block.text.strip() if isinstance(block, Paragraph) else ''
-        m = header_re.match(text)
-        if m:
-            current = m.group(1)
-            sections[current] = []
-        if current:
-            sections[current].append(block)
-    return sections
+    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+
+    # iterate over all paragraph elements, auch innerhalb von Tabellen
+    for p in tpl.element.xpath('.//w:p', namespaces=ns):
+        texts = [t.text or '' for t in p.xpath('.//w:t', namespaces=ns)]
+        text = ''.join(texts)
+        parent = p.getparent()
+        idx = parent.index(p)
+        parent.remove(p)
+        # entsprechenden Abschnitt einfuegen, falls vorhanden
+            parent.insert(idx, deepcopy(elem))
+        # ggf. Fallback-Icon einfuegen
+            body.remove(pic_p._p)
+            parent.insert(idx, pic_p._p)
 
 
-def merge_into_template(sections, template_path, out_path):
-    if not os.path.isfile(template_path):
         print(f"Template not found: {template_path}")
         return
     tpl = Document(template_path)
