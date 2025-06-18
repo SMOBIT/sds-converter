@@ -49,7 +49,17 @@ sds-converter/
      -v $(pwd)/sample_pdfs:/app/sample_pdfs \
      -v $(pwd)/templates:/app/templates \
      -v $(pwd)/output:/app/output \
-     sds-converter:latest
+    sds-converter:latest
+   ```
+
+   Falls du den Converter lokal ohne Docker ausführen möchtest, kannst du die
+   Eingabe-, Template- und Output-Pfade über Umgebungsvariablen setzen:
+
+   ```bash
+   INPUT_DIR=./sample_pdfs \
+   TEMPLATE_PATH=./templates/master_template.docx \
+   OUTPUT_DIR=./output \
+   python converter.py
    ```
 
    Der Container verarbeitet alle `.pdf`-Dateien in `sample_pdfs/` und legt die fertigen `.docx`-Dateien in `output/` ab.
