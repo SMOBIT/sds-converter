@@ -51,9 +51,11 @@ def extract_sections(raw_docx_path):
     for block in iter_block_items(doc):
         text = block.text.strip() if isinstance(block, Paragraph) else ''
         if text.upper().startswith('ABSCHNITT'):
-            num = text.split()[1].rstrip(':')
-            current = num
-            sections[num] = []
+            parts = text.split()
+            if len(parts) >= 2:
+                num = ''.join(ch for ch in parts[1] if ch.isdigit())
+                current = num
+                sections[num] = []
         if current:
             sections[current].append(block)
     return sections
@@ -99,8 +101,8 @@ if __name__ == '__main__':
         if not f.lower().endswith('.pdf'):
             continue
         pdf = os.path.join(INPUT_DIR, f)
-        raw = os.path.join(OUTPUT_DIR, f.replace('.pdf','_raw.docx'))
-        final = os.path.join(OUTPUT_DIR, f.replace('.pdf','.docx'))
+        raw = os.path.join(OUTPUT_DIR, f.replace('.pdf', '_raw.docx'))
+        final = os.path.join(OUTPUT_DIR, f.replace('.pdf', '.docx'))
         print('Processing', f)
         pdf_to_raw_docx(pdf, raw)
         secs = extract_sections(raw)
