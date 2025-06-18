@@ -25,6 +25,7 @@ ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 # Debug-Ausgabe des verwendeten Template-Pfads
 print(f">>> Verwende TEMPLATE_PATH: {TEMPLATE_PATH}")
 
+
 def get_image_size_inches(path):
     img = Image.open(path)
     dpi = img.info.get('dpi', (96, 96))
@@ -87,82 +88,13 @@ def extract_sections(raw_docx_path):
                     break
             if found_idx is not None:
                 tbl_elem = deepcopy(block._element)
-                rows = tbl_elem.findall('./w:tr', ns)
+                rows = tbl_elem.findall('./w:tr')
                 for r in rows[:found_idx+1]:
                     tbl_elem.remove(r)
-                if tbl_elem.findall('./w:tr', ns):
+                if tbl_elem.findall('./w:tr'):
                     sections[current].append(tbl_elem)
             elif current:
                 sections[current].append(block)
-    for block in iter_block_items(doc):
-        if isinstance(block, Paragraph):
-            text = block.text.strip()
-            m = header_re.match(text)
-            if m:
-                current = m.group(1)
-                sections[current] = []
-                continue  # skip heading itself
-            if current:
-                sections[current].append(block)
-        elif isinstance(block, Table):
-            found_idx = None
-            for i, row in enumerate(block.rows):
-                for cell in row.cells:
-                    for para in cell.paragraphs:
-                        m = header_re.match(para.text.strip())
-                        if m:
-                            current = m.group(1)
-                            sections[current] = []
-                            found_idx = i
-                            break
-                    if found_idx is not None:
-                        break
-                if found_idx is not None:
-                    break
-            if found_idx is not None:
-                tbl_elem = deepcopy(block._element)
-                rows = tbl_elem.findall('./w:tr', ns)
-                for r in rows[:found_idx+1]:
-                    tbl_elem.remove(r)
-                if tbl_elem.findall('./w:tr', ns):
-                    sections[current].append(tbl_elem)
-            elif current:
-                sections[current].append(block)
-    for block in iter_block_items(doc):
-        if isinstance(block, Paragraph):
-            text = block.text.strip()
-            m = header_re.match(text)
-            if m:
-                current = m.group(1)
-                sections[current] = []
-            if current:
-                sections[current].append(block)
-        elif isinstance(block, Table):
-            found = False
-            for row in block.rows:
-                for cell in row.cells:
-                    for para in cell.paragraphs:
-                        m = header_re.match(para.text.strip())
-                        if m:
-                            current = m.group(1)
-                            sections[current] = []
-                            found = True
-                            break
-                    if found:
-                        break
-                if found:
-                    break
-            if current:
-                sections[current].append(block)
-    header_re = re.compile(r"^\s*abschnitt\s*(\d+)", re.I)
-    for block in iter_block_items(doc):
-        text = block.text.strip() if isinstance(block, Paragraph) else ''
-        m = header_re.match(text)
-        if m:
-            current = m.group(1)
-            sections[current] = []
-        if current:
-            sections[current].append(block)
     return sections
 
 
@@ -240,3 +172,7 @@ if __name__ == '__main__':
         secs = extract_sections(raw)
         merge_into_template(secs, TEMPLATE_PATH, final)
         print('Saved', final)
+        # PDF und Roh-DOCX löschen nach erfolgreichem Export
+        os.remove(pdf)
+        if os.path.exists(raw):
+            os.remove(raw)
