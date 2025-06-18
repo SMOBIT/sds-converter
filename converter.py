@@ -59,8 +59,6 @@ def extract_sections(raw_docx_path):
     current = None
     header_re = re.compile(r"^\s*abschnitt\s*(\d+)\s*[:.-]?", re.I)
 
-    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-
     for block in iter_block_items(doc):
         if isinstance(block, Paragraph):
             text = block.text.strip()
@@ -68,32 +66,22 @@ def extract_sections(raw_docx_path):
             if m:
                 current = m.group(1)
                 sections[current] = []
-                continue  # skip heading itself
+                continue
             if current:
                 sections[current].append(block)
         elif isinstance(block, Table):
-            found_idx = None
-            for i, row in enumerate(block.rows):
+            # handle tables similarly
+            for row in block.rows:
                 for cell in row.cells:
                     for para in cell.paragraphs:
                         m = header_re.match(para.text.strip())
                         if m:
                             current = m.group(1)
                             sections[current] = []
-                            found_idx = i
                             break
-                    if found_idx is not None:
-                        break
-                if found_idx is not None:
-                    break
-            if found_idx is not None:
-                tbl_elem = deepcopy(block._element)
-                rows = tbl_elem.findall('./w:tr')
-                for r in rows[:found_idx+1]:
-                    tbl_elem.remove(r)
-                if tbl_elem.findall('./w:tr'):
-                    sections[current].append(tbl_elem)
-            elif current:
+                    if current and not sections[current]:
+                        continue
+            if current:
                 sections[current].append(block)
     return sections
 
@@ -106,11 +94,8 @@ def merge_into_template(sections, template_path, out_path):
         return
     tpl = Document(template_path)
     body = tpl.element.body
-    # Regex zum Finden von Platzhaltern
     pattern = re.compile(r"\{+\s*SECTION\s*_?\s*(\d+)\s*\}+", re.I)
-    pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
 
-    # iterate over all paragraph elements, auch innerhalb von Tabellen
     for p in tpl.element.xpath('.//w:p'):
         texts = [t.text or '' for t in p.xpath('.//w:t')]
         text = ''.join(texts)
@@ -126,32 +111,22 @@ def merge_into_template(sections, template_path, out_path):
             parent.insert(idx, deepcopy(elem))
             idx += 1
 
-    pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
-    pattern = re.compile(r"{SECTION_(\d+)}")
-
+    # second pass for paragraphs at top level
+    pattern2 = re.compile(r"{SECTION_(\d+)}")
     for block in list(iter_block_items(tpl)):
         if not isinstance(block, Paragraph):
             continue
         text = block.text
-        m = pattern.search(text)
-        if not m:
+        m2 = pattern2.search(text)
+        if not m2:
             continue
-        num = m.group(1)
+        num = m2.group(1)
         idx = body.index(block._element)
         body.remove(block._element)
         for b in sections.get(num, []):
             elem = getattr(b, '_element', b)
             body.insert(idx, deepcopy(elem))
             idx += 1
-        icon = os.path.join(ICONS_DIR, f'GHS{num}.png')
-        if os.path.isfile(icon):
-            w_in, _ = get_image_size_inches(icon)
-            pic_p = tpl.add_paragraph()
-            run = pic_p.add_run()
-            run.add_picture(icon, width=Inches(w_in))
-            if pic_p._p.getparent() is not None:
-                pic_p._p.getparent().remove(pic_p._p)
-            body.insert(idx, pic_p._p)
 
     tpl.save(out_path)
 
@@ -160,6 +135,8 @@ if __name__ == '__main__':
     os.makedirs(INPUT_DIR, exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(ICONS_DIR, exist_ok=True)
+
+    # process each PDF and then remove it
     for f in os.listdir(INPUT_DIR):
         if not f.lower().endswith('.pdf'):
             continue
@@ -167,12 +144,34 @@ if __name__ == '__main__':
         base, _ = os.path.splitext(f)
         raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
         final = os.path.join(OUTPUT_DIR, f"{base}.docx")
+
         print('Processing', f)
         pdf_to_raw_docx(pdf, raw)
         secs = extract_sections(raw)
         merge_into_template(secs, TEMPLATE_PATH, final)
         print('Saved', final)
-        # PDF und Roh-DOCX löschen nach erfolgreichem Export
-        os.remove(pdf)
+
+        # PDF entfernen nach erfolgreichem Export
+        try:
+            os.remove(pdf)
+            print(f"Removed input PDF: {pdf}")
+        except Exception as e:
+            print(f"Could not remove PDF {pdf}: {e}")
+
+        # Roh-DOCX entfernen, falls vorhanden
         if os.path.exists(raw):
-            os.remove(raw)
+            try:
+                os.remove(raw)
+                print(f"Removed raw DOCX: {raw}")
+            except Exception as e:
+                print(f"Could not remove raw DOCX {raw}: {e}")
+
+    # abschließende Aufräumaktion: alle verbleibenden Dateien im INPUT_DIR löschen
+    for leftover in os.listdir(INPUT_DIR):
+        path = os.path.join(INPUT_DIR, leftover)
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+                print(f"Removed leftover file: {path}")
+            except Exception as e:
+                print(f"Could not remove leftover {path}: {e}")
