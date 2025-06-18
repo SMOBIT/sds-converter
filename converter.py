@@ -72,8 +72,9 @@ def merge_into_template(sections, template_path, out_path):
         return
     tpl = Document(template_path)
     body = tpl.element.body
-    # Regex zum Finden von Platzhaltern wie {SECTION_1}
-    pattern = re.compile(r"{SECTION_(\d+)}")
+    # Regex zum Finden von Platzhaltern wie {SECTION_1} oder {{SECTION_1}}
+    # (manche Templates nutzen doppelte geschweifte Klammern)
+    pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
 
     for block in list(iter_block_items(tpl)):
         if not isinstance(block, Paragraph):
