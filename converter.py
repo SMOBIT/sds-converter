@@ -11,7 +11,7 @@ from docx.shared import Inches
 from PIL import Image
 
 # Standardpfade (werden im Container verwendet)
-DEFAULT_INPUT_DIR = "/app/sample_pdfs"
+DEFAULT_INPUT_DIR = "/data/sample_pdfs"
 DEFAULT_TEMPLATE_PATH = "/data/templates/master_template.docx"
 DEFAULT_OUTPUT_DIR = "/data/output"
 DEFAULT_ICONS_DIR = "/data/icons"
