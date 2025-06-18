@@ -8,11 +8,17 @@ from docx.text.paragraph import Paragraph
 from docx.shared import Inches
 from PIL import Image
 
-# Container-Verzeichnisse
-INPUT_DIR = "/app/sample_pdfs"
-TEMPLATE_PATH = "/app/templates/master_template.docx"
-OUTPUT_DIR = "/app/output"
-ICONS_DIR = "/app/icons"
+# Standardpfade (werden im Container verwendet)
+DEFAULT_INPUT_DIR = "/app/sample_pdfs"
+DEFAULT_TEMPLATE_PATH = "/app/templates/master_template.docx"
+DEFAULT_OUTPUT_DIR = "/app/output"
+DEFAULT_ICONS_DIR = "/app/icons"
+
+# Pfade ggf. überschreiben, damit das Skript auch lokal lauffähig ist
+INPUT_DIR = os.environ.get("INPUT_DIR", DEFAULT_INPUT_DIR)
+TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", DEFAULT_TEMPLATE_PATH)
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", DEFAULT_OUTPUT_DIR)
+ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 
 
 def get_image_size_inches(path):
@@ -71,7 +77,8 @@ def merge_into_template(sections, template_path, out_path):
             continue
         text = block.text
         for num, blocks in sections.items():
-            placeholder = f'{{{{SECTION_{num}}}}}'
+            # Platzhalter im Template sind in der Form {SECTION_1}
+            placeholder = f'{{SECTION_{num}}}'
             if placeholder in text:
                 idx = body.index(block._element)
                 body.remove(block._element)
@@ -93,14 +100,16 @@ def merge_into_template(sections, template_path, out_path):
 
 
 if __name__ == '__main__':
+    os.makedirs(INPUT_DIR, exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(ICONS_DIR, exist_ok=True)
     for f in os.listdir(INPUT_DIR):
         if not f.lower().endswith('.pdf'):
             continue
         pdf = os.path.join(INPUT_DIR, f)
-        raw = os.path.join(OUTPUT_DIR, f.replace('.pdf','_raw.docx'))
-        final = os.path.join(OUTPUT_DIR, f.replace('.pdf','.docx'))
+        base, _ = os.path.splitext(f)
+        raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
+        final = os.path.join(OUTPUT_DIR, f"{base}.docx")
         print('Processing', f)
         pdf_to_raw_docx(pdf, raw)
         secs = extract_sections(raw)
