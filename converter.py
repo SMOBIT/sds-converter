@@ -52,17 +52,36 @@ def iter_block_items(parent):
 
 def extract_sections(raw_docx_path):
     doc = Document(raw_docx_path)
-    sections = {}
+    sections: dict[str, list] = {}
     current = None
-    header_re = re.compile(r"^\s*abschnitt\s*(\d+)", re.I)
+    header_re = re.compile(r"^\s*abschnitt\s*(\d+)\s*[:.-]?", re.I)
+
     for block in iter_block_items(doc):
-        text = block.text.strip() if isinstance(block, Paragraph) else ''
-        m = header_re.match(text)
-        if m:
-            current = m.group(1)
-            sections[current] = []
-        if current:
-            sections[current].append(block)
+        if isinstance(block, Paragraph):
+            text = block.text.strip()
+            m = header_re.match(text)
+            if m:
+                current = m.group(1)
+                sections[current] = []
+            if current:
+                sections[current].append(block)
+        elif isinstance(block, Table):
+            found = False
+            for row in block.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        m = header_re.match(para.text.strip())
+                        if m:
+                            current = m.group(1)
+                            sections[current] = []
+                            found = True
+                            break
+                    if found:
+                        break
+                if found:
+                    break
+            if current:
+                sections[current].append(block)
     return sections
 
 
