@@ -22,6 +22,8 @@ TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", DEFAULT_TEMPLATE_PATH)
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", DEFAULT_OUTPUT_DIR)
 ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 
+# Debug-Ausgabe des verwendeten Template-Pfads
+print(f">>> Verwende TEMPLATE_PATH: {TEMPLATE_PATH}")
 
 def get_image_size_inches(path):
     img = Image.open(path)
@@ -165,65 +167,35 @@ def extract_sections(raw_docx_path):
 
 
 def merge_into_template(sections, template_path, out_path):
+    # Debug: zeigen, welcher Pfad geladen wird
+    print(f">>> merge_into_template lädt Template von: {template_path}")
     if not os.path.isfile(template_path):
         print(f"Template not found: {template_path}")
         return
     tpl = Document(template_path)
     body = tpl.element.body
-    # Regex zum Finden von Platzhaltern. Erlaubt sind ein oder mehrere
-    # geschweifte Klammern sowie optionale Leerzeichen innerhalb des
-    # Platzhalters, z.B. "{SECTION_1}", "{{ SECTION 1 }}" usw.
+    # Regex zum Finden von Platzhaltern
     pattern = re.compile(r"\{+\s*SECTION\s*_?\s*(\d+)\s*\}+", re.I)
-
-    # Regex zum Finden von Platzhaltern wie {SECTION_1} oder {{SECTION_1}}
-    # (manche Templates nutzen doppelte geschweifte Klammern)
     pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
 
-
-    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-
     # iterate over all paragraph elements, auch innerhalb von Tabellen
-    for p in tpl.element.xpath('.//w:p', namespaces=ns):
-        texts = [t.text or '' for t in p.xpath('.//w:t', namespaces=ns)]
+    for p in tpl.element.xpath('.//w:p'):
+        texts = [t.text or '' for t in p.xpath('.//w:t')]
         text = ''.join(texts)
         m = pattern.search(text)
         if not m:
-
             continue
         num = m.group(1)
         parent = p.getparent()
         idx = parent.index(p)
         parent.remove(p)
-
-        # entsprechenden Abschnitt einfuegen, falls vorhanden
         for b in sections.get(num, []):
             elem = getattr(b, '_element', b)
             parent.insert(idx, deepcopy(elem))
             idx += 1
 
-        # ggf. Fallback-Icon einfuegen
-
-            continue
-        num = m.group(1)
-        parent = p.getparent()
-        idx = parent.index(p)
-        parent.remove(p)
-
-        # entsprechenden Abschnitt einfuegen, falls vorhanden
-        for b in sections.get(num, []):
-            elem = getattr(b, '_element', b)
-            parent.insert(idx, deepcopy(elem))
-            idx += 1
-
-        # ggf. Fallback-Icon einfuegen
-
-    # Regex zum Finden von Platzhaltern wie {SECTION_1} oder {{SECTION_1}}
-    # (manche Templates nutzen doppelte geschweifte Klammern)
     pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
-    # Regex zum Finden von Platzhaltern wie {SECTION_1}
     pattern = re.compile(r"{SECTION_(\d+)}")
-
-
 
     for block in list(iter_block_items(tpl)):
         if not isinstance(block, Paragraph):
@@ -235,30 +207,18 @@ def merge_into_template(sections, template_path, out_path):
         num = m.group(1)
         idx = body.index(block._element)
         body.remove(block._element)
-
-        # entsprechenden Abschnitt einfügen, falls vorhanden
         for b in sections.get(num, []):
             elem = getattr(b, '_element', b)
             body.insert(idx, deepcopy(elem))
             idx += 1
-
-        # ggf. Fallback-Icon einfügen
-
         icon = os.path.join(ICONS_DIR, f'GHS{num}.png')
         if os.path.isfile(icon):
             w_in, _ = get_image_size_inches(icon)
             pic_p = tpl.add_paragraph()
             run = pic_p.add_run()
             run.add_picture(icon, width=Inches(w_in))
-
             if pic_p._p.getparent() is not None:
                 pic_p._p.getparent().remove(pic_p._p)
-            parent.insert(idx, pic_p._p)
-
-
-            body.remove(pic_p._p)
-            parent.insert(idx, pic_p._p)
-
             body.insert(idx, pic_p._p)
 
     tpl.save(out_path)
