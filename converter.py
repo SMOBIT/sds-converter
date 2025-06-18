@@ -82,6 +82,15 @@ def extract_sections(raw_docx_path):
                     break
             if current:
                 sections[current].append(block)
+    header_re = re.compile(r"^\s*abschnitt\s*(\d+)", re.I)
+    for block in iter_block_items(doc):
+        text = block.text.strip() if isinstance(block, Paragraph) else ''
+        m = header_re.match(text)
+        if m:
+            current = m.group(1)
+            sections[current] = []
+        if current:
+            sections[current].append(block)
     return sections
 
 
@@ -91,9 +100,19 @@ def merge_into_template(sections, template_path, out_path):
         return
     tpl = Document(template_path)
     body = tpl.element.body
+
     # Regex zum Finden von Platzhaltern wie {SECTION_1} oder {{SECTION_1}}
     # (manche Templates nutzen doppelte geschweifte Klammern)
     pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
+
+
+    # Regex zum Finden von Platzhaltern wie {SECTION_1} oder {{SECTION_1}}
+    # (manche Templates nutzen doppelte geschweifte Klammern)
+    pattern = re.compile(r"\{{1,2}SECTION_(\d+)\}{1,2}")
+    # Regex zum Finden von Platzhaltern wie {SECTION_1}
+    pattern = re.compile(r"{SECTION_(\d+)}")
+
+
 
     for block in list(iter_block_items(tpl)):
         if not isinstance(block, Paragraph):
