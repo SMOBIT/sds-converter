@@ -55,9 +55,8 @@ def iter_block_items(parent):
 
 def extract_sections(raw_docx_path):
     """
-    Liest das konvertierte DOCX aus und splittet es in Abschnitte,
-    die durch \"Abschnitt X:\" markiert werden – egal ob die Überschrift
-    in einem normalen Absatz oder in einer Tabellenzelle steht.
+    Teilt ein rohes DOCX in Abschnitte auf, die durch 'Abschnitt X:' in
+    Absätzen oder Tabellenüberschriften markiert werden.
     """
     doc = Document(raw_docx_path)
     sections: dict[str, list] = {}
@@ -65,37 +64,38 @@ def extract_sections(raw_docx_path):
     header_re = re.compile(r"^\s*abschnitt\s*(\d+)\s*[:.-]?", re.I)
 
     for block in iter_block_items(doc):
-        # 1) Absatz
+        # Paragraph-Überschrift
         if isinstance(block, Paragraph):
             text = block.text.strip()
             m = header_re.match(text)
             if m:
                 current = m.group(1)
                 sections[current] = []
-                continue   # Überschrift selbst nicht kopieren
+                continue  # Überschrift nicht als Inhalt
             if current:
                 sections[current].append(block)
 
-        # 2) Tabelle
+        # Tabellenblock
         elif isinstance(block, Table):
-            # Prüfen, ob in dieser Tabelle eine Überschrift steht
-            found = False
+            # Suche in Zellen nach einer Abschnitts-Überschrift
+            found_header = False
             for row in block.rows:
                 for cell in row.cells:
                     for para in cell.paragraphs:
                         if header_re.match(para.text.strip()):
                             current = header_re.match(para.text.strip()).group(1)
                             sections[current] = []
-                            found = True
+                            found_header = True
                             break
-                    if found: break
-                if found: break
+                    if found_header:
+                        break
+                if found_header:
+                    break
 
-            if found:
-                # Wenn wir gerade eine Überschrift gefunden haben,
-                # überspringen wir *diese* Tabelle komplett
+            if found_header:
+                # Überschriftstabelle überspringen, nicht als Inhalt einfügen
                 continue
-            # Ansonsten (falls current nicht None) hängt die ganze Tabelle an
+            # Ansonsten, wenn innerhalb eines Abschnitts: Tabelle hinzufügen
             if current:
                 sections[current].append(block)
 
@@ -103,7 +103,6 @@ def extract_sections(raw_docx_path):
 
 
 def merge_into_template(sections, template_path, out_path):
-    # Debug: zeigen, welcher Pfad geladen wird
     print(f">>> merge_into_template lädt Template von: {template_path}")
     if not os.path.isfile(template_path):
         print(f"Template not found: {template_path}")
@@ -112,6 +111,7 @@ def merge_into_template(sections, template_path, out_path):
     body = tpl.element.body
     pattern = re.compile(r"\{+\s*SECTION\s*_?\s*(\d+)\s*\}+", re.I)
 
+    # Erster Pass: Einfügen direkt in Platzhalter-Absätzen
     for p in tpl.element.xpath('.//w:p'):
         texts = [t.text or '' for t in p.xpath('.//w:t')]
         text = ''.join(texts)
@@ -127,7 +127,7 @@ def merge_into_template(sections, template_path, out_path):
             parent.insert(idx, deepcopy(elem))
             idx += 1
 
-    # second pass for paragraphs at top level
+    # Zweiter Pass: oberste Ebene
     pattern2 = re.compile(r"{SECTION_(\d+)}")
     for block in list(iter_block_items(tpl)):
         if not isinstance(block, Paragraph):
@@ -152,7 +152,6 @@ if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(ICONS_DIR, exist_ok=True)
 
-    # process each PDF and then remove it
     for f in os.listdir(INPUT_DIR):
         if not f.lower().endswith('.pdf'):
             continue
@@ -167,27 +166,12 @@ if __name__ == '__main__':
         merge_into_template(secs, TEMPLATE_PATH, final)
         print('Saved', final)
 
-        # PDF entfernen nach erfolgreichem Export
-        try:
-            os.remove(pdf)
-            print(f"Removed input PDF: {pdf}")
-        except Exception as e:
-            print(f"Could not remove PDF {pdf}: {e}")
-
-        # Roh-DOCX entfernen, falls vorhanden
-        if os.path.exists(raw):
-            try:
-                os.remove(raw)
-                print(f"Removed raw DOCX: {raw}")
-            except Exception as e:
-                print(f"Could not remove raw DOCX {raw}: {e}")
-
-    # abschließende Aufräumaktion: alle verbleibenden Dateien im INPUT_DIR löschen
-    for leftover in os.listdir(INPUT_DIR):
-        path = os.path.join(INPUT_DIR, leftover)
-        if os.path.isfile(path):
-            try:
-                os.remove(path)
-                print(f"Removed leftover file: {path}")
-            except Exception as e:
-                print(f"Could not remove leftover {path}: {e}")
+        # Dateien löschen: nur PDF & Raw-DOCX
+        for ext in ('.pdf', '_raw.docx'):
+            path = pdf if ext == '.pdf' else raw
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                    print(f"Removed {path}")
+                except Exception as e:
+                    print(f"Could not remove {path}: {e}")
