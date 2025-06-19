@@ -167,11 +167,10 @@ if __name__ == '__main__':
         print('Saved', final)
 
         # Dateien löschen: nur PDF & Raw-DOCX
-        for ext in ('.pdf', '_raw.docx'):
-            path = pdf if ext == '.pdf' else raw
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                    print(f"Removed {path}")
-                except Exception as e:
-                    print(f"Could not remove {path}: {e}")
+                # Nur Eingangs-PDF löschen, keine Dateien aus OUTPUT_DIR
+        if os.path.exists(pdf):
+            try:
+                os.remove(pdf)
+                print(f"Removed input PDF: {pdf}")
+            except Exception as e:
+                print(f"Could not remove PDF {pdf}: {e}")
