@@ -54,35 +54,51 @@ def iter_block_items(parent):
 
 
 def extract_sections(raw_docx_path):
+    """
+    Liest das konvertierte DOCX aus und splittet es in Abschnitte,
+    die durch \"Abschnitt X:\" markiert werden – egal ob die Überschrift
+    in einem normalen Absatz oder in einer Tabellenzelle steht.
+    """
     doc = Document(raw_docx_path)
     sections: dict[str, list] = {}
     current = None
     header_re = re.compile(r"^\s*abschnitt\s*(\d+)\s*[:.-]?", re.I)
 
     for block in iter_block_items(doc):
+        # 1) Absatz
         if isinstance(block, Paragraph):
             text = block.text.strip()
             m = header_re.match(text)
             if m:
                 current = m.group(1)
                 sections[current] = []
-                continue
+                continue   # Überschrift selbst nicht kopieren
             if current:
                 sections[current].append(block)
+
+        # 2) Tabelle
         elif isinstance(block, Table):
-            # handle tables similarly
+            # Prüfen, ob in dieser Tabelle eine Überschrift steht
+            found = False
             for row in block.rows:
                 for cell in row.cells:
                     for para in cell.paragraphs:
-                        m = header_re.match(para.text.strip())
-                        if m:
-                            current = m.group(1)
+                        if header_re.match(para.text.strip()):
+                            current = header_re.match(para.text.strip()).group(1)
                             sections[current] = []
+                            found = True
                             break
-                    if current and not sections[current]:
-                        continue
+                    if found: break
+                if found: break
+
+            if found:
+                # Wenn wir gerade eine Überschrift gefunden haben,
+                # überspringen wir *diese* Tabelle komplett
+                continue
+            # Ansonsten (falls current nicht None) hängt die ganze Tabelle an
             if current:
                 sections[current].append(block)
+
     return sections
 
 
