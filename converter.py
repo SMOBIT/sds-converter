@@ -77,15 +77,18 @@ def extract_sections(raw_docx_path):
 
         # Tabellenblock
         elif isinstance(block, Table):
-            # Suche in Zellen nach einer Abschnitts-Überschrift
+            # Suche nach einer Abschnitts-Überschrift innerhalb der Tabelle
             found_header = False
-            for row in block.rows:
+            header_row_index = None
+            header_num = None
+            for ri, row in enumerate(block.rows):
                 for cell in row.cells:
                     for para in cell.paragraphs:
-                        if header_re.match(para.text.strip()):
-                            current = header_re.match(para.text.strip()).group(1)
-                            sections[current] = []
+                        m = header_re.match(para.text.strip())
+                        if m:
+                            header_num = m.group(1)
                             found_header = True
+                            header_row_index = ri
                             break
                     if found_header:
                         break
@@ -93,11 +96,19 @@ def extract_sections(raw_docx_path):
                     break
 
             if found_header:
-                # Überschriftstabelle überspringen, nicht als Inhalt einfügen
-                continue
-            # Ansonsten, wenn innerhalb eines Abschnitts: Tabelle hinzufügen
-            if current:
-                sections[current].append(block)
+                current = header_num
+                sections[current] = []
+
+                # kopiere Tabelle ohne Überschriftszeilen
+                tbl_elem = deepcopy(block._element)
+                for _ in range(header_row_index + 1):
+                    tbl_elem.remove(tbl_elem.tr_lst[0])
+                if len(tbl_elem.tr_lst) > 0:
+                    sections[current].append(Table(tbl_elem, doc))
+            else:
+                # Ansonsten gesamte Tabelle dem aktuellen Abschnitt hinzufügen
+                if current:
+                    sections[current].append(block)
 
     return sections
 
