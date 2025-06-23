@@ -78,9 +78,8 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
             for ri, row in enumerate(block.rows):
                 for cell in row.cells:
                     for para in cell.paragraphs:
-                        m = header_re.match(para.text.strip())
-                        if m:
-                            header_sec = m.group(1)
+                        if header_re.match(para.text.strip()):
+                            header_sec = header_re.match(para.text.strip()).group(1)
                             found = True
                             header_row = ri
                             break
@@ -90,7 +89,6 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                     break
 
             if found and header_sec:
-                # Abschnittswechsel innerhalb Tabelle
                 if header_sec != current:
                     current = header_sec
                     sections.setdefault(header_sec, [])
@@ -108,7 +106,8 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
 
 def merge_into_template(sections: Dict[str, List], template_path: str, out_path: str) -> None:
     """
-    Fügt die extrahierten Abschnitte in das Template an den Platzhaltern {SECTION X} ein.
+    Fügt die extrahierten Abschnitte in das Template an den Platzhaltern {SECTION X} ein,
+    sucht dabei in allen Absätzen (inkl. Tabellenzellen).
     """
     print(f">>> merge_into_template lädt Template von: {template_path}")
     if not os.path.isfile(template_path):
@@ -116,19 +115,20 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
         return
 
     tpl = Document(template_path)
+    # Pattern für {SECTION_1} oder {SECTION 1}
     pattern = re.compile(r"\{\s*SECTION[_ ]?(\d+)\s*\}", re.I)
 
-    # Suche in allen Paragraph-Objekten (inkl. Tabellenzellen)
-    for p in list(tpl.paragraphs):
-        m = pattern.search(p.text)
+    # Gehe alle w:p Knoten durch (enthält Paragraphs überall)
+    for p_elem in tpl.element.body.xpath('.//w:p'):
+        texts = [t.text for t in p_elem.xpath('.//w:t') if t.text]
+        full_text = ''.join(texts)
+        m = pattern.search(full_text)
         if not m:
             continue
         sec = m.group(1)
-        elm = p._element
-        parent = elm.getparent()
-        idx = parent.index(elm)
-        parent.remove(elm)
-        # Füge alle Elemente der Sektion ein
+        parent = p_elem.getparent()
+        idx = parent.index(p_elem)
+        parent.remove(p_elem)
         for elem in sections.get(sec, []):
             new_elm = deepcopy(elem._element)
             parent.insert(idx, new_elm)
