@@ -1,4 +1,3 @@
-
 import sys
 import re
 from typing import Dict, List
@@ -24,6 +23,8 @@ ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 
 print(f">>> Verwende TEMPLATE_PATH: {TEMPLATE_PATH}")
 
+# Regex für Abschnitts-Header (flexibel für Deutsch/Englisch)
+header_re = re.compile(r"^\s*(?:Abschnitt|Section)\s*\.?\s*(\d+)\s*[:\.-]?", re.I)
 # Regex für Abschnitts-Header (flexibler, erlaubt Aufzählungszeichen und –)
 # Beispiele: "• Abschnitt 1:", "Section 2 –", "1. Abschnitt 3- Inhalt"
 header_re = re.compile(
@@ -46,8 +47,10 @@ def pdf_to_raw_docx(pdf_path: str, raw_docx_path: str) -> None:
 
 def iter_block_items(parent):
     """
+    Generator für Absätze und Tabellen im Dokument.
     Generator für Absätze und Tabellen im gesamten Dokument.
     """
+    for child in parent.element.body:
     # Durchläuft auch verschachtelte Elemente wie Textboxen
     for child in parent.element.body.iter():
         if isinstance(child, CT_P):
@@ -131,6 +134,8 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
     # Pattern für {SECTION_1} oder {SECTION 1}
     pattern = re.compile(r"\{\s*SECTION[_ ]?(\d+)\s*\}", re.I)
 
+    # Gehe alle w:p Knoten durch (enthält Paragraphs überall)
+    for p_elem in tpl.element.body.xpath('.//w:p'):
     # Gehe alle w:p Knoten durch (auch in Textboxen und Shapes)
     for p_elem in tpl.element.xpath('.//w:p'):
         texts = [t.text for t in p_elem.xpath('.//w:t') if t.text]
@@ -162,6 +167,8 @@ if __name__ == '__main__':
         try:
             pdf_file = os.path.join(INPUT_DIR, f)
             base, _ = os.path.splitext(f)
+            raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
+            final = os.path.join(OUTPUT_DIR, f"{base}.docx")
             safe_base = safe_re.sub('_', base)
             raw = os.path.join(OUTPUT_DIR, f"{safe_base}_raw.docx")
             final = os.path.join(OUTPUT_DIR, f"{safe_base}.docx")
