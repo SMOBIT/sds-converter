@@ -1,4 +1,4 @@
-import os
+
 import sys
 import re
 from typing import Dict, List
@@ -24,8 +24,8 @@ ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 
 print(f">>> Verwende TEMPLATE_PATH: {TEMPLATE_PATH}")
 
-# Regex für Abschnitts-Header (flexibel für Deutsch/Englisch)
-# Beispiele: "Abschnitt 1:", "• Abschnitt 1:", "Section 2 –", "1. Abschnitt 3- Inhalt"
+# Regex für Abschnitts-Header (flexibler, erlaubt Aufzählungszeichen und –)
+# Beispiele: "• Abschnitt 1:", "Section 2 –", "1. Abschnitt 3- Inhalt"
 header_re = re.compile(
     r"^\s*(?:[\d•*\-–.]+\s*)?(?:Abschnitt|Section)\s*\.?\s*(\d+)\s*[:.\-–]?",
     re.I,
@@ -46,20 +46,19 @@ def pdf_to_raw_docx(pdf_path: str, raw_docx_path: str) -> None:
 
 def iter_block_items(parent):
     """
-    Generator für Absätze und Tabellen im gesamten Dokument, inklusive Shapes/Textfeldern.
+    Generator für Absätze und Tabellen im gesamten Dokument.
     """
-    # body.iter() durchläuft rekursiv alle Elemente
-    for elem in parent.element.body.iter():
-        if isinstance(elem, CT_P):
-            yield Paragraph(elem, parent)
-        elif isinstance(elem, CT_Tbl):
-            yield Table(elem, parent)
+    # Durchläuft auch verschachtelte Elemente wie Textboxen
+    for child in parent.element.body.iter():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, parent)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, parent)
 
 
 def extract_sections(raw_docx_path: str) -> Dict[str, List]:
     """
     Teilt ein rohes DOCX in Abschnitte auf, markiert durch 'Abschnitt X' oder 'Section X'.
-    Nimmt Header-Paragraphs und Tabellenheader (falls keine Datenzeile folgen) mit auf.
     """
     doc = Document(raw_docx_path)
     sections: Dict[str, List] = {}
@@ -73,7 +72,11 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                 sec = m.group(1)
                 current = sec
                 sections.setdefault(sec, [])
-                # Paragraph selbst als Inhalt übernehmen (Header + following content)
+                remaining = header_re.sub("", text, count=1).strip()
+                if remaining:
+                    tmp_doc = Document()
+                    tmp_doc.add_paragraph(remaining)
+                    sections[current].append(tmp_doc.paragraphs[-1])
                 continue
             if current:
                 sections[current].append(block)
@@ -85,9 +88,8 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
             for ri, row in enumerate(block.rows):
                 for cell in row.cells:
                     for para in cell.paragraphs:
-                        m = header_re.match(para.text.strip())
-                        if m:
-                            header_sec = m.group(1)
+                        if header_re.match(para.text.strip()):
+                            header_sec = header_re.match(para.text.strip()).group(1)
                             found = True
                             header_row = ri
                             break
@@ -101,13 +103,12 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                     current = header_sec
                     sections.setdefault(header_sec, [])
                 tbl_elem = deepcopy(block._element)
-                # Entferne alle Zeilen bis inkl. Header
                 for _ in range(header_row + 1):
                     tbl_elem.tr_lst.pop(0)
                 if tbl_elem.tr_lst:
                     sections[current].append(Table(tbl_elem, doc))
                 else:
-                    # Keine Datenzeilen: kompletten Tabellenblock speichern
+                    # Nur Kopfzeile vorhanden – komplette Tabelle übernehmen
                     sections[current].append(block)
             else:
                 if current:
@@ -119,7 +120,7 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
 def merge_into_template(sections: Dict[str, List], template_path: str, out_path: str) -> None:
     """
     Fügt die extrahierten Abschnitte in das Template an den Platzhaltern {SECTION X} ein,
-    sucht dabei in allen w:p Elementen (auch in Tabellen- und Shape-Zellen).
+    sucht dabei in allen Absätzen (inkl. Tabellenzellen).
     """
     print(f">>> merge_into_template lädt Template von: {template_path}")
     if not os.path.isfile(template_path):
@@ -127,9 +128,10 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
         return
 
     tpl = Document(template_path)
+    # Pattern für {SECTION_1} oder {SECTION 1}
     pattern = re.compile(r"\{\s*SECTION[_ ]?(\d+)\s*\}", re.I)
 
-    # Alle w:p Knoten XPath-übergreifend
+    # Gehe alle w:p Knoten durch (auch in Textboxen und Shapes)
     for p_elem in tpl.element.xpath('.//w:p'):
         texts = [t.text for t in p_elem.xpath('.//w:t') if t.text]
         full_text = ''.join(texts)
@@ -139,9 +141,7 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
         sec = m.group(1)
         parent = p_elem.getparent()
         idx = parent.index(p_elem)
-        # Placeholder entfernen
         parent.remove(p_elem)
-        # Alle Elemente des Sections einfügen
         for elem in sections.get(sec, []):
             new_elm = deepcopy(elem._element)
             parent.insert(idx, new_elm)
@@ -162,12 +162,7 @@ if __name__ == '__main__':
         try:
             pdf_file = os.path.join(INPUT_DIR, f)
             base, _ = os.path.splitext(f)
-
-            # unerwünschte Zeichen aus dem Dateinamen entfernen
-            safe_base = safe_re.sub("_", base)
-
             safe_base = safe_re.sub('_', base)
-
             raw = os.path.join(OUTPUT_DIR, f"{safe_base}_raw.docx")
             final = os.path.join(OUTPUT_DIR, f"{safe_base}.docx")
 
