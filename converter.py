@@ -97,6 +97,9 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                     tbl_elem.tr_lst.pop(0)
                 if tbl_elem.tr_lst:
                     sections[current].append(Table(tbl_elem, doc))
+                else:
+                    # No rows left after removing the header -> keep original table
+                    sections[current].append(block)
             else:
                 if current:
                     sections[current].append(block)
