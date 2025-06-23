@@ -59,7 +59,7 @@ def iter_block_items(parent):
 def extract_sections(raw_docx_path: str) -> Dict[str, List]:
     """
     Teilt ein rohes DOCX in Abschnitte auf, markiert durch 'Abschnitt X' oder 'Section X'.
-    Nimmt nur Inhaltsposten nach dem Header (keine reinen Header selbst).
+    Nimmt Header-Paragraphs und Tabellenheader (falls keine Datenzeile folgen) mit auf.
     """
     doc = Document(raw_docx_path)
     sections: Dict[str, List] = {}
@@ -73,13 +73,12 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                 sec = m.group(1)
                 current = sec
                 sections.setdefault(sec, [])
-                # reinen Header nicht speichern
+                # Paragraph selbst als Inhalt übernehmen (Header + following content)
                 continue
             if current:
                 sections[current].append(block)
 
         elif isinstance(block, Table):
-            # Tabelle auf Header prüfen
             found = False
             header_sec = None
             header_row = None
@@ -98,17 +97,18 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                     break
 
             if found and header_sec:
-                # Wechsel zu neuem Abschnitt
                 if header_sec != current:
                     current = header_sec
                     sections.setdefault(header_sec, [])
-                # Klonen ohne Header-Zeile
                 tbl_elem = deepcopy(block._element)
-                tbl_elem.tr_lst.pop(header_row)
-                # Dateizeilen weitergeben
+                # Entferne alle Zeilen bis inkl. Header
+                for _ in range(header_row + 1):
+                    tbl_elem.tr_lst.pop(0)
                 if tbl_elem.tr_lst:
                     sections[current].append(Table(tbl_elem, doc))
-                # Keine Datenzeile: überspringen
+                else:
+                    # Keine Datenzeilen: kompletten Tabellenblock speichern
+                    sections[current].append(block)
             else:
                 if current:
                     sections[current].append(block)
