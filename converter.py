@@ -41,6 +41,9 @@ def pdf_to_raw_docx(pdf_path: str, raw_docx_path: str) -> None:
 
 
 def iter_block_items(parent):
+    """
+    Generator für Absätze und Tabellen im Dokument.
+    """
     for child in parent.element.body:
         if isinstance(child, CT_P):
             yield Paragraph(child, parent)
@@ -63,11 +66,11 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
             if m:
                 sec = m.group(1)
                 current = sec
-                if sec not in sections:
-                    sections[sec] = []
+                sections.setdefault(sec, [])
                 continue
             if current:
                 sections[current].append(block)
+
         elif isinstance(block, Table):
             found = False
             header_sec = None
@@ -87,9 +90,10 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                     break
 
             if found and header_sec:
+                # Abschnittswechsel innerhalb Tabelle
                 if header_sec != current:
                     current = header_sec
-                    sections[current] = []
+                    sections.setdefault(header_sec, [])
                 tbl_elem = deepcopy(block._element)
                 for _ in range(header_row + 1):
                     tbl_elem.tr_lst.pop(0)
@@ -112,23 +116,23 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
         return
 
     tpl = Document(template_path)
-    body = tpl.element.body
-    # Korrigiertes Platzhalter-Muster
     pattern = re.compile(r"\{\s*SECTION[_ ]?(\d+)\s*\}", re.I)
 
-    for block in list(iter_block_items(tpl)):
-        if isinstance(block, Paragraph):
-            m = pattern.search(block.text)
-            if m:
-                sec = m.group(1)
-                idx = body.index(block._element)
-                # Platzhalter entfernen
-                body.remove(block._element)
-                # Sektion einfügen
-                for elem in sections.get(sec, []):
-                    e = getattr(elem, '_element', elem)
-                    body.insert(idx, deepcopy(e))
-                    idx += 1
+    # Suche in allen Paragraph-Objekten (inkl. Tabellenzellen)
+    for p in list(tpl.paragraphs):
+        m = pattern.search(p.text)
+        if not m:
+            continue
+        sec = m.group(1)
+        elm = p._element
+        parent = elm.getparent()
+        idx = parent.index(elm)
+        parent.remove(elm)
+        # Füge alle Elemente der Sektion ein
+        for elem in sections.get(sec, []):
+            new_elm = deepcopy(elem._element)
+            parent.insert(idx, new_elm)
+            idx += 1
 
     tpl.save(out_path)
     print(f">>> Template gespeichert: {out_path}")
