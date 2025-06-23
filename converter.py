@@ -25,7 +25,11 @@ ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 print(f">>> Verwende TEMPLATE_PATH: {TEMPLATE_PATH}")
 
 # Regex für Abschnitts-Header (flexibel für Deutsch/Englisch)
-header_re = re.compile(r"^\s*(?:Abschnitt|Section)\s*\.?\s*(\d+)\s*[:\.-]?", re.I)
+# Erlaubt nach der Abschnittsnummer auch Gedankenstriche (–, —)
+header_re = re.compile(
+    r"^\s*(?:Abschnitt|Section)\s*\.?\s*(\d+)\s*[:\.\-\u2013\u2014]?",
+    re.I,
+)
 # Regex für sichere Dateinamen
 safe_re = re.compile(r"[^0-9A-Za-z]+")
 
