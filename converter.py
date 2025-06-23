@@ -9,7 +9,6 @@ from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from copy import deepcopy
-from lxml import etree
 
 # Standardpfade (werden im Container verwendet)
 DEFAULT_INPUT_DIR = "/data/sample_pdfs"
@@ -48,18 +47,15 @@ def pdf_to_raw_docx(pdf_path: str, raw_docx_path: str) -> None:
 def extract_sections(raw_docx_path: str) -> Dict[str, List]:
     """
     Teilt ein rohes DOCX in Abschnitte auf, markiert durch 'Abschnitt X' oder 'Section X'.
-    Sucht in allen Paragraph- und Tabellen-Knoten via XPath, um auch Shapes/Textfelder abzudecken.
+    Ignoriert XML-Namespace und nutzt local-name() für XPath.
     """
     doc = Document(raw_docx_path)
     sections: Dict[str, List] = {}
     current: str = None
 
-    # Namespace für XPath
-    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-
-    # Paragraphs via XPath
-    for p_elem in doc.element.body.xpath('.//w:p', namespaces=ns):
-        texts = [t.text for t in p_elem.xpath('.//w:t', namespaces=ns) if t.text]
+    # Paragraphs via local-name XPath
+    for p_elem in doc.element.body.xpath('.//*[local-name()="p"]'):
+        texts = [t.text for t in p_elem.xpath('.//*[local-name()="t"]') if t.text]
         full = ''.join(texts).strip()
         m = header_re.match(full)
         if m:
@@ -70,13 +66,13 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
             para = Paragraph(p_elem, doc)
             sections[current].append(para)
 
-    # Tabellen via XPath
-    for tbl_elem in doc.element.body.xpath('.//w:tbl', namespaces=ns):
-        rows = tbl_elem.xpath('.//w:tr', namespaces=ns)
+    # Tabellen via local-name XPath
+    for tbl_elem in doc.element.body.xpath('.//*[local-name()="tbl"]'):
+        rows = tbl_elem.xpath('.//*[local-name()="tr"]')
         header_sec = None
         header_row = None
         for ri, tr in enumerate(rows):
-            texts = [t.text for t in tr.xpath('.//w:t', namespaces=ns) if t.text]
+            texts = [t.text for t in tr.xpath('.//*[local-name()="t"]') if t.text]
             full = ''.join(texts).strip()
             m = header_re.match(full)
             if m:
@@ -87,7 +83,7 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
             current = header_sec
             sections.setdefault(current, [])
             clone = deepcopy(tbl_elem)
-            clone_rows = clone.xpath('.//w:tr', namespaces=ns)
+            clone_rows = clone.xpath('.//*[local-name()="tr"]')
             # Entferne Header-Zeile
             clone.remove(clone_rows[header_row])
             # Verbleibende Zeilen prüfen
@@ -107,7 +103,7 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
 def merge_into_template(sections: Dict[str, List], template_path: str, out_path: str) -> None:
     """
     Fügt die extrahierten Abschnitte in das Template an den Platzhaltern {SECTION X} ein,
-    sucht dabei in allen w:p-Elementen via XPath.
+    nutzt local-name() XPath für Paragraphs.
     """
     print(f">>> merge_into_template lädt Template von: {template_path}")
     if not os.path.isfile(template_path):
@@ -116,10 +112,9 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
 
     tpl = Document(template_path)
     pattern = re.compile(r"\{\s*SECTION[_ ]?(\d+)\s*\}", re.I)
-    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 
-    for p_elem in tpl.element.body.xpath('.//w:p', namespaces=ns):
-        texts = [t.text for t in p_elem.xpath('.//w:t', namespaces=ns) if t.text]
+    for p_elem in tpl.element.body.xpath('.//*[local-name()="p"]'):
+        texts = [t.text for t in p_elem.xpath('.//*[local-name()="t"]') if t.text]
         full_text = ''.join(texts)
         m = pattern.search(full_text)
         if not m:
