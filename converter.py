@@ -105,6 +105,22 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
     return sections
 
 
+def debug_dump_sections(sections: Dict[str, List], base_name: str) -> None:
+    """
+    Schreibt jede extrahierte Sektion als eigene DOCX zum Debuggen.
+    """
+    debug_dir = os.path.join(OUTPUT_DIR, f"debug_{base_name}")
+    os.makedirs(debug_dir, exist_ok=True)
+    for num, items in sections.items():
+        doc = Document()
+        for b in items:
+            elem = getattr(b, '_element', b)
+            doc.element.body.append(deepcopy(elem))
+        debug_path = os.path.join(debug_dir, f"section_{num}.docx")
+        doc.save(debug_path)
+        print(f">>> Debug: Sektion {num} in {debug_path} geschrieben, Elemente: {len(items)}")
+
+
 def merge_into_template(sections: Dict[str, List], template_path: str, out_path: str) -> None:
     print(f">>> merge_into_template lädt Template von: {template_path}")
     if not os.path.isfile(template_path):
@@ -153,6 +169,15 @@ if __name__ == '__main__':
             print(f"Processing {f}...")
             pdf_to_raw_docx(pdf_path, raw_docx)
             sections = extract_sections(raw_docx)
+
+            # Debug-Ausgabe: Übersicht der extrahierten Abschnitte
+            print(f">>> Debug: Extrahierte Abschnitte für {f}: {list(sections.keys())}")
+            for num, items in sections.items():
+                print(f"  Abschnitt {num}: {len(items)} Elemente")
+
+            # Neuer Zwischenschritt: Sektionen als einzelne DOCX speichern
+            debug_dump_sections(sections, base)
+
             merge_into_template(sections, TEMPLATE_PATH, final_docx)
             print(f"Saved {final_docx}")
 
