@@ -7,6 +7,8 @@ from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from copy import deepcopy
 
 # Standardpfade (werden im Container verwendet)
@@ -120,6 +122,21 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
     return sections
 
 
+def _create_paragraph_like(template_p, text: str):
+    """Return a new w:p element with same formatting as template_p and text."""
+    new_p = OxmlElement('w:p')
+    pPr = template_p.xpath('./w:pPr')
+    if pPr:
+        new_p.append(deepcopy(pPr[0]))
+    r = OxmlElement('w:r')
+    t = OxmlElement('w:t')
+    t.set(qn('xml:space'), 'preserve')
+    t.text = text
+    r.append(t)
+    new_p.append(r)
+    return new_p
+
+
 def merge_into_template(sections: Dict[str, List], template_path: str, out_path: str) -> None:
     """
     Fügt die extrahierten Abschnitte in das Template an den Platzhaltern {SECTION X} ein,
@@ -144,12 +161,25 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
         if not m:
             continue
         sec = m.group(1)
+        start, end = m.start(), m.end()
+        before = full_text[:start]
+        after = full_text[end:]
+
         parent = p_elem.getparent()
         idx = parent.index(p_elem)
         parent.remove(p_elem)
+
+        if before:
+            parent.insert(idx, _create_paragraph_like(p_elem, before))
+            idx += 1
+
         for elem in sections.get(sec, []):
             new_elm = deepcopy(elem._element)
             parent.insert(idx, new_elm)
+            idx += 1
+
+        if after:
+            parent.insert(idx, _create_paragraph_like(p_elem, after))
             idx += 1
 
     tpl.save(out_path)
