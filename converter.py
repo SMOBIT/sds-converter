@@ -106,8 +106,8 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                     current = header_sec
                     sections.setdefault(header_sec, [])
                 tbl_elem = deepcopy(block._element)
-                for _ in range(header_row + 1):
-                    tbl_elem.tr_lst.pop(0)
+                if 0 <= header_row < len(tbl_elem.tr_lst):
+                    tbl_elem.tr_lst.pop(header_row)
                 if tbl_elem.tr_lst:
                     sections[current].append(Table(tbl_elem, doc))
                 else:
