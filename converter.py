@@ -149,8 +149,10 @@ if __name__ == '__main__':
         try:
             pdf_file = os.path.join(INPUT_DIR, f)
             base, _ = os.path.splitext(f)
-            raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
-            final = os.path.join(OUTPUT_DIR, f"{base}.docx")
+            # unerwünschte Zeichen aus dem Dateinamen entfernen
+            safe_base = safe_re.sub("_", base)
+            raw = os.path.join(OUTPUT_DIR, f"{safe_base}_raw.docx")
+            final = os.path.join(OUTPUT_DIR, f"{safe_base}.docx")
 
             print(f"Processing {f}...")
             pdf_to_raw_docx(pdf_file, raw)
