@@ -22,11 +22,13 @@ TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", DEFAULT_TEMPLATE_PATH)
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", DEFAULT_OUTPUT_DIR)
 ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 
-# Debug-Ausgabe des verwendeten Template-Pfads
 print(f">>> Verwende TEMPLATE_PATH: {TEMPLATE_PATH}")
 
 # Regex für Abschnitts-Header (flexibel für Deutsch/Englisch)
 header_re = re.compile(r"^\s*(?:Abschnitt|Section)\s*\.?\s*(\d+)\s*[:\.-]?", re.I)
+# Regex für sichere Dateinamen
+safe_re = re.compile(r"[^0-9A-Za-z]+")
+
 
 def pdf_to_raw_docx(pdf_path: str, raw_docx_path: str) -> None:
     """
@@ -39,7 +41,6 @@ def pdf_to_raw_docx(pdf_path: str, raw_docx_path: str) -> None:
 
 
 def iter_block_items(parent):
-    # yield paragraphs and tables only
     for child in parent.element.body:
         if isinstance(child, CT_P):
             yield Paragraph(child, parent)
@@ -49,56 +50,60 @@ def iter_block_items(parent):
 
 def extract_sections(raw_docx_path: str) -> Dict[str, List]:
     """
-    Teilt ein rohes DOCX in Abschnitte auf, die durch 'Abschnitt X' oder 'Section X' markiert werden.
+    Teilt ein rohes DOCX in Abschnitte auf, markiert durch 'Abschnitt X' oder 'Section X'.
+    Wenn eine Tabellen-Überschrift mit demselben Abschnitt nochmals auftaucht,
+    wird sie nicht als neuer Abschnitt behandelt, sondern das Tabellen-Körper-Element wird angehängt.
     """
     doc = Document(raw_docx_path)
     sections: Dict[str, List] = {}
     current: str = None
 
     for block in iter_block_items(doc):
-        # Paragraph-Überschrift
+        # Paragraph-Überschrift detektieren
         if isinstance(block, Paragraph):
             text = block.text.strip()
             m = header_re.match(text)
             if m:
-                current = m.group(1)
-                sections[current] = []
+                sec = m.group(1)
+                current = sec
+                if sec not in sections:
+                    sections[sec] = []
                 continue
             if current:
                 sections[current].append(block)
 
         # Tabellenblock
         elif isinstance(block, Table):
-            # Suche nach einer Abschnitts-Überschrift innerhalb der Tabelle
-            found_header = False
-            header_row_idx = None
-            header_num = None
+            found = False
+            header_sec = None
+            header_row = None
             for ri, row in enumerate(block.rows):
                 for cell in row.cells:
                     for para in cell.paragraphs:
                         m = header_re.match(para.text.strip())
                         if m:
-                            header_num = m.group(1)
-                            found_header = True
-                            header_row_idx = ri
+                            header_sec = m.group(1)
+                            found = True
+                            header_row = ri
                             break
-                    if found_header:
+                    if found:
                         break
-                if found_header:
+                if found:
                     break
 
-            if found_header:
-                current = header_num
-                sections[current] = []
+            if found and header_sec:
+                # Wenn es ein neuer Abschnitt ist, initialisieren
+                if header_sec != current:
+                    current = header_sec
+                    sections[current] = []
                 # Kopiere Tabelle ohne Überschriftszeilen
                 tbl_elem = deepcopy(block._element)
-                # Entferne alle Zeilen bis header_row_idx
-                for _ in range(header_row_idx + 1):
+                for _ in range(header_row + 1):
                     tbl_elem.tr_lst.pop(0)
                 if tbl_elem.tr_lst:
                     sections[current].append(Table(tbl_elem, doc))
             else:
-                # Ansonsten gesamte Tabelle zum aktuellen Abschnitt hinzufügen
+                # Normales Tabellen-Element
                 if current:
                     sections[current].append(block)
 
@@ -106,49 +111,39 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
 
 
 def debug_dump_sections(sections: Dict[str, List], base_name: str) -> None:
-    """
-    Schreibt jede extrahierte Sektion als eigene DOCX zum Debuggen.
-    """
-    debug_dir = os.path.join(OUTPUT_DIR, f"debug_{base_name}")
+    safe_name = safe_re.sub("_", base_name).strip("_")
+    debug_dir = os.path.join(OUTPUT_DIR, f"debug_{safe_name}")
     os.makedirs(debug_dir, exist_ok=True)
-    for num, items in sections.items():
+    print(f">>> Debug: Lege Ordner an: {debug_dir}")
+    for num, elems in sections.items():
         doc = Document()
-        for b in items:
-            elem = getattr(b, '_element', b)
-            doc.element.body.append(deepcopy(elem))
-        debug_path = os.path.join(debug_dir, f"section_{num}.docx")
-        doc.save(debug_path)
-        print(f">>> Debug: Sektion {num} in {debug_path} geschrieben, Elemente: {len(items)}")
+        for b in elems:
+            e = getattr(b, '_element', b)
+            doc.element.body.append(deepcopy(e))
+        path = os.path.join(debug_dir, f"section_{num}.docx")
+        doc.save(path)
+        print(f">>> Debug: Sektion {num} -> {path}, Elemente: {len(elems)}")
 
 
 def merge_into_template(sections: Dict[str, List], template_path: str, out_path: str) -> None:
     print(f">>> merge_into_template lädt Template von: {template_path}")
     if not os.path.isfile(template_path):
-        print(f"Template not found: {template_path}", file=sys.stderr)
+        print(f"Template nicht gefunden: {template_path}", file=sys.stderr)
         return
-
     tpl = Document(template_path)
     body = tpl.element.body
-    # Platzhalter-Muster: {SECTION_1} oder {SECTION 1}
     pattern = re.compile(r"\{\s*SECTION[_ ]?(\d+)\s*\}", re.I)
-
-    # Alle Blöcke im Template durchgehen
     for block in list(iter_block_items(tpl)):
         if isinstance(block, Paragraph):
-            text = block.text
-            m = pattern.search(text)
-            if not m:
-                continue
-            num = m.group(1)
-            idx = body.index(block._element)
-            # Platzhalter-Paragraph entfernen
-            body.remove(block._element)
-            # Sektionselemente einfügen
-            for elem in sections.get(num, []):
-                e = getattr(elem, '_element', elem)
-                body.insert(idx, deepcopy(e))
-                idx += 1
-
+            txt = block.text
+            m = pattern.search(txt)
+            if m:
+                sec = m.group(1)
+                idx = body.index(block._element)
+                body.remove(block._element)
+                for b in sections.get(sec, []):
+                    e = getattr(b, '_element', b)
+                    body.insert(idx, deepcopy(e)); idx += 1
     tpl.save(out_path)
 
 
@@ -156,36 +151,23 @@ if __name__ == '__main__':
     os.makedirs(INPUT_DIR, exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(ICONS_DIR, exist_ok=True)
-
     for f in os.listdir(INPUT_DIR):
         if not f.lower().endswith('.pdf'):
             continue
         try:
-            pdf_path = os.path.join(INPUT_DIR, f)
+            pdf_file = os.path.join(INPUT_DIR, f)
             base, _ = os.path.splitext(f)
-            raw_docx = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
-            final_docx = os.path.join(OUTPUT_DIR, f"{base}.docx")
-
+            raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
+            final = os.path.join(OUTPUT_DIR, f"{base}.docx")
             print(f"Processing {f}...")
-            pdf_to_raw_docx(pdf_path, raw_docx)
-            sections = extract_sections(raw_docx)
-
-            # Debug-Ausgabe: Übersicht der extrahierten Abschnitte
-            print(f">>> Debug: Extrahierte Abschnitte für {f}: {list(sections.keys())}")
-            for num, items in sections.items():
-                print(f"  Abschnitt {num}: {len(items)} Elemente")
-
-            # Neuer Zwischenschritt: Sektionen als einzelne DOCX speichern
+            pdf_to_raw_docx(pdf_file, raw)
+            sections = extract_sections(raw)
+            print(f">>> Debug: Sections für {f}: {list(sections.keys())}")
+            for s, els in sections.items(): print(f"  Sektion {s}: {len(els)}")
             debug_dump_sections(sections, base)
-
-            merge_into_template(sections, TEMPLATE_PATH, final_docx)
-            print(f"Saved {final_docx}")
-
-            # Eingangs-PDF löschen, falls gewünscht
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
-                print(f"Removed input PDF: {pdf_path}")
-
-        except Exception as e:
-            print(f"Error processing file {f}: {e}", file=sys.stderr)
+            merge_into_template(sections, TEMPLATE_PATH, final)
+            print(f"Saved {final}")
+            if os.path.exists(pdf_file): os.remove(pdf_file)
+        except Exception as exc:
+            print(f"Fehler bei {f}: {exc}", file=sys.stderr)
             continue
