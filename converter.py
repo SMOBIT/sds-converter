@@ -24,8 +24,12 @@ ICONS_DIR = os.environ.get("ICONS_DIR", DEFAULT_ICONS_DIR)
 
 print(f">>> Verwende TEMPLATE_PATH: {TEMPLATE_PATH}")
 
-# Regex für Abschnitts-Header (flexibel für Deutsch/Englisch)
-header_re = re.compile(r"^\s*(?:Abschnitt|Section)\s*\.?\s*(\d+)\s*[:\.-]?", re.I)
+# Regex für Abschnitts-Header (flexibler, erlaubt Aufzählungszeichen und –)
+# Beispiele: "• Abschnitt 1:", "Section 2 –", "1. Abschnitt 3- Inhalt"
+header_re = re.compile(
+    r"^\s*(?:[\d•*\-–.]+\s*)?(?:Abschnitt|Section)\s*\.?\s*(\d+)\s*[:.\-–]?",
+    re.I,
+)
 # Regex für sichere Dateinamen
 safe_re = re.compile(r"[^0-9A-Za-z]+")
 
@@ -42,9 +46,10 @@ def pdf_to_raw_docx(pdf_path: str, raw_docx_path: str) -> None:
 
 def iter_block_items(parent):
     """
-    Generator für Absätze und Tabellen im Dokument.
+    Generator für Absätze und Tabellen im gesamten Dokument.
     """
-    for child in parent.element.body:
+    # Durchläuft auch verschachtelte Elemente wie Textboxen
+    for child in parent.element.body.iter():
         if isinstance(child, CT_P):
             yield Paragraph(child, parent)
         elif isinstance(child, CT_Tbl):
@@ -67,6 +72,11 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                 sec = m.group(1)
                 current = sec
                 sections.setdefault(sec, [])
+                remaining = header_re.sub("", text, count=1).strip()
+                if remaining:
+                    tmp_doc = Document()
+                    tmp_doc.add_paragraph(remaining)
+                    sections[current].append(tmp_doc.paragraphs[-1])
                 continue
             if current:
                 sections[current].append(block)
@@ -97,6 +107,9 @@ def extract_sections(raw_docx_path: str) -> Dict[str, List]:
                     tbl_elem.tr_lst.pop(0)
                 if tbl_elem.tr_lst:
                     sections[current].append(Table(tbl_elem, doc))
+                else:
+                    # Nur Kopfzeile vorhanden – komplette Tabelle übernehmen
+                    sections[current].append(block)
             else:
                 if current:
                     sections[current].append(block)
@@ -118,8 +131,8 @@ def merge_into_template(sections: Dict[str, List], template_path: str, out_path:
     # Pattern für {SECTION_1} oder {SECTION 1}
     pattern = re.compile(r"\{\s*SECTION[_ ]?(\d+)\s*\}", re.I)
 
-    # Gehe alle w:p Knoten durch (enthält Paragraphs überall)
-    for p_elem in tpl.element.body.xpath('.//w:p'):
+    # Gehe alle w:p Knoten durch (auch in Textboxen und Shapes)
+    for p_elem in tpl.element.xpath('.//w:p'):
         texts = [t.text for t in p_elem.xpath('.//w:t') if t.text]
         full_text = ''.join(texts)
         m = pattern.search(full_text)
@@ -149,8 +162,9 @@ if __name__ == '__main__':
         try:
             pdf_file = os.path.join(INPUT_DIR, f)
             base, _ = os.path.splitext(f)
-            raw = os.path.join(OUTPUT_DIR, f"{base}_raw.docx")
-            final = os.path.join(OUTPUT_DIR, f"{base}.docx")
+            safe_base = safe_re.sub('_', base)
+            raw = os.path.join(OUTPUT_DIR, f"{safe_base}_raw.docx")
+            final = os.path.join(OUTPUT_DIR, f"{safe_base}.docx")
 
             print(f"Processing {f}...")
             pdf_to_raw_docx(pdf_file, raw)
