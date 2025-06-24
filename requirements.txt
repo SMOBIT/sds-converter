@@ -2,3 +2,4 @@ pdf2docx
 python-docx
 Pillow
 mammoth
+docxtpl
