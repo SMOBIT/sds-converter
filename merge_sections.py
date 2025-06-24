@@ -7,9 +7,9 @@ from docx import Document
 
 # ---- CONFIG ----
 
-TEMPLATE_PATH = "master_template.docx"
-SECTIONS_JSON = "sections.json"
-OUTPUT_DOCX   = "merged_output.docx"
+TEMPLATE_PATH  = "/data/templates/master_template.docx"
+SECTIONS_JSON  = "/data/output/sections.json"
+OUTPUT_DOCX    = "/data/output/merged_output.docx"
 
 # ---- Hilfsfunktionen ----
 
